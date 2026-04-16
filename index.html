@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon 新品写作+图需 策略工具</title>
+  <link rel="stylesheet" href="style.css" />
+
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">⚡</span>
+          <span class="logo-text">Amazon <span>新品写作+图需 策略工具</span></span>
+        </div>
+        <button class="settings-btn" id="settingsBtn" title="API 设置">⚙ API 设置</button>
+      </div>
+    </header>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>API 配置</h3>
+          <button class="modal-close" id="closeSettings">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>AI 服务商</label>
+            <select id="apiProvider">
+              <option value="gemini">Google Gemini（推荐）</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">自定义 OpenAI 兼容接口</option>
+            </select>
+          </div>
+          <div class="form-group" id="geminiModelGroup">
+            <label>Gemini 模型</label>
+            <select id="geminiModel">
+              <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（轻量快速 · 默认）</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash（快速版）</option>
+              <option value="gemini-2.5-pro">gemini-2.5-pro（旗舰版）</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro（上一代稳定）</option>
+            </select>
+          </div>
+          <div class="form-group" id="openaiModelGroup" style="display:none">
+            <label>OpenAI 模型</label>
+            <select id="openaiModel">
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="gpt-4-turbo">gpt-4-turbo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="apiKey" placeholder="AIzaSy... 或 sk-..." />
+          </div>
+          <div class="form-group" id="customUrlGroup" style="display:none">
+            <label>自定义接口 URL</label>
+            <input type="text" id="customUrl" placeholder="https://api.example.com/v1/chat/completions" />
+          </div>
+          <div class="form-group" id="customModelGroup" style="display:none">
+            <label>模型名称</label>
+            <input type="text" id="customModel" placeholder="gpt-4o" />
+          </div>
+          <div class="model-tip" id="modelTip"></div>
+          <div class="settings-divider">
+            <span>数据源配置（可选）</span>
+          </div>
+          <div class="form-group">
+            <label>Sorftime API Key <span class="optional">（用于真实抓取亚马逊 Listing 数据）</span></label>
+            <input type="password" id="sorfTimeKey" placeholder="BasicAuth 后的 Account-SK，如 rezbv0v5..." />
+            <div class="input-hint">填写后"自动获取 Listing"将调用 Sorftime 真实数据，否则使用 AI 模拟</div>
+          </div>
+          <button class="btn btn-primary" id="saveSettings">保存配置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Steps Navigator -->
+      <div class="steps-nav">
+        <div class="step-item active" data-step="1">
+          <div class="step-num">1</div>
+          <div class="step-label">竞品录入</div>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" data-step="2">
+          <div class="step-num">2</div>
+          <div class="step-label">竞品分析</div>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" data-step="3">
+          <div class="step-num">3</div>
+          <div class="step-label">我方卖点</div>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" data-step="4">
+          <div class="step-num">4</div>
+          <div class="step-label">新品图需+写作方向输出</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Input -->
+      <section class="card step-panel active" id="step1">
+        <h2 class="card-title">
+          <span class="step-badge">Step 1</span>
+          竞品录入 ASIN 或亚马逊链接
+        </h2>
+        <div class="form-group">
+          <label>亚马逊美国站产品 ASIN 或完整链接</label>
+          <div class="asin-input-row">
+            <input
+              type="text"
+              id="asinInput"
+              placeholder="例：B0XXXXXXXXX 或 https://www.amazon.com/dp/B0XXXXXXXXX"
+              class="input-large"
+            />
+            <button class="btn btn-fetch" id="fetchListingBtn" title="自动用 AI 抓取该产品标题与五点描述">
+              <span id="fetchBtnIcon">⚡</span> 自动获取 Listing
+            </button>
+          </div>
+          <div class="input-hint">支持格式：ASIN（10位字母数字）或完整亚马逊商品URL · 点击"自动获取"让 AI 提取标题与五点描述</div>
+        </div>
+
+        <!-- Auto-fetched listing preview -->
+        <div id="fetchedListingCard" style="display:none">
+          <div class="fetched-header">
+            <span class="fetched-label">已自动提取 Listing 内容</span>
+            <button class="btn-clear-fetched" id="clearFetchedBtn" title="清除">✕ 清除</button>
+          </div>
+          <div class="fetched-body">
+            <div class="fetched-field">
+              <div class="fetched-field-label">产品标题</div>
+              <div class="fetched-field-value" id="fetchedTitle">—</div>
+            </div>
+            <div class="fetched-field">
+              <div class="fetched-field-label">五点描述</div>
+              <ul class="fetched-bullets" id="fetchedBullets"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- 五点质量评分面板 -->
+        <div id="bulletScorePanel" style="display:none"></div>
+
+        <!-- Manual fallback -->
+        <div class="form-group" id="manualListingGroup">
+          <label>手动补充信息 <span class="optional">（可选，AI 自动获取后此处可留空）</span></label>
+          <textarea
+            id="rawListing"
+            rows="4"
+            placeholder="如自动获取不准确，可在此粘贴竞品 listing 原文（英文）补充：描述、Q&A 等..."
+          ></textarea>
+        </div>
+
+        <button class="btn btn-primary btn-large" id="analyzeBtn">
+          <span class="btn-icon">🚀</span> 开始分析竞品
+        </button>
+      </section>
+
+      <!-- Step 2: Competitor Analysis Output -->
+      <section class="card step-panel" id="step2">
+        <div class="card-header-row">
+          <h2 class="card-title">
+            <span class="step-badge">Step 2</span>
+            竞品深度分析报告
+          </h2>
+          <div class="card-actions">
+            <button class="btn btn-outline btn-sm" id="copyAnalysis">📋 复制报告</button>
+            <button class="btn btn-outline btn-sm" id="reanalyze">🔄 重新分析</button>
+          </div>
+        </div>
+
+        <div id="analysisLoading" class="loading-block" style="display:none">
+          <div class="spinner"></div>
+          <div class="loading-text">
+            <p id="loadingStatus">正在分析竞品数据...</p>
+            <p class="loading-sub">AI 正在深度解析产品卖点与品类定位，请稍候</p>
+          </div>
+        </div>
+
+        <div id="analysisOutput" style="display:none">
+          <!-- ASIN Info Bar -->
+          <div class="info-bar" id="asinInfoBar"></div>
+
+          <!-- 纵向信息汇总 -->
+          <div class="analysis-vertical">
+
+            <div class="av-section">
+              <div class="av-section-title">📊 参数信息表</div>
+              <div class="av-section-body"><div id="paramsTable"></div></div>
+            </div>
+
+            <div class="av-section">
+              <div class="av-section-title">⭐ 核心卖点分析</div>
+              <div class="av-section-body"><div id="sellPointsContent"></div></div>
+            </div>
+
+            <div class="av-section">
+              <div class="av-section-title">💬 评价分析</div>
+              <div class="av-section-body"><div id="reviewsContent"></div></div>
+            </div>
+
+            <div class="av-section">
+              <div class="av-section-title">🏆 品类定位</div>
+              <div class="av-section-body"><div id="categoryContent"></div></div>
+            </div>
+
+            <div class="av-section">
+              <div class="av-section-title">💡 运营建议</div>
+              <div class="av-section-body"><div id="opSuggestionContent"></div></div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card-footer" id="step2Footer" style="display:none">
+          <button class="btn btn-primary btn-large" id="goStep3Btn">
+            继续输入我方产品卖点 →
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 3: Our Product Input -->
+      <section class="card step-panel" id="step3">
+        <h2 class="card-title">
+          <span class="step-badge">Step 3</span>
+          填写我方产品信息
+        </h2>
+        <p class="step3-intro">按模块填写，越详细输出越精准。描述用中文即可，AI 将自动生成中英文对照输出。</p>
+        <div class="step3-tip">
+          <span class="step3-tip-icon">💡</span>
+          <span><strong>填写越详尽，输出越精准。</strong>尤其是「核心卖点」和「差异化优势」，请尽量写清楚具体功能、参数亮点、与竞品的区别。信息越充分，AI 生成的图需方向、五点文案、标题方案才能真正贴合你的产品，而非泛泛而谈。</span>
+        </div>
+
+        <!-- 模块 A：基本信息 -->
+        <div class="s3-block">
+          <div class="s3-block-title">🏷️ A · 基本信息</div>
+          <div class="s3-row">
+            <div class="form-group s3-col">
+              <label>产品名称（中文）</label>
+              <input type="text" id="s3ProductNameCN" placeholder="例：WiFi 智能门锁" />
+            </div>
+            <div class="form-group s3-col">
+              <label>价格区间（美元）</label>
+              <input type="text" id="s3Price" placeholder="例：$79 - $99" />
+            </div>
+          </div>
+          <div class="s3-row">
+            <div class="form-group s3-col">
+              <label>目标市场 / 使用场景</label>
+              <input type="text" id="s3Scene" placeholder="例：租房客、公寓、民宿房东" />
+            </div>
+            <div class="form-group s3-col">
+              <label>目标人群</label>
+              <input type="text" id="s3Audience" placeholder="例：25-45岁、有一定科技接受度的租户" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块 B：核心参数 -->
+        <div class="s3-block">
+          <div class="s3-block-title">📐 B · 核心参数规格</div>
+          <div id="s3ParamsContainer">
+            <div class="s3-param-row">
+              <input type="text" class="s3-param-key" placeholder="参数名（如：材质）" />
+              <input type="text" class="s3-param-val" placeholder="参数值（如：锌合金+ABS工程塑料）" />
+              <button class="s3-param-del" title="删除">✕</button>
+            </div>
+            <div class="s3-param-row">
+              <input type="text" class="s3-param-key" placeholder="参数名（如：连接方式）" />
+              <input type="text" class="s3-param-val" placeholder="参数值（如：WiFi 2.4GHz + 蓝牙5.0）" />
+              <button class="s3-param-del" title="删除">✕</button>
+            </div>
+            <div class="s3-param-row">
+              <input type="text" class="s3-param-key" placeholder="参数名（如：解锁方式）" />
+              <input type="text" class="s3-param-val" placeholder="参数值（如：App / 指纹 / 密码 / 钥匙 / 语音）" />
+              <button class="s3-param-del" title="删除">✕</button>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm s3-add-param" id="addParamBtn">＋ 添加参数</button>
+        </div>
+
+        <!-- 模块 C：核心卖点 -->
+        <div class="s3-block">
+          <div class="s3-block-title">⭐ C · 核心卖点（每条一个亮点）<span class="s3-block-hint">填越多越详细，图需方向和文案质量越高</span></div>
+          <div id="s3SellpointsContainer">
+            <div class="s3-sp-row">
+              <div class="s3-sp-num">1</div>
+              <input type="text" class="s3-sp-input" placeholder="例：支持 Alexa / Google Home 语音控制，免手操作" />
+            </div>
+            <div class="s3-sp-row">
+              <div class="s3-sp-num">2</div>
+              <input type="text" class="s3-sp-input" placeholder="例：自动反锁功能，离门30秒自动上锁" />
+            </div>
+            <div class="s3-sp-row">
+              <div class="s3-sp-num">3</div>
+              <input type="text" class="s3-sp-input" placeholder="例：支持创建100组临时密码，适合Airbnb房东管理" />
+            </div>
+            <div class="s3-sp-row">
+              <div class="s3-sp-num">4</div>
+              <input type="text" class="s3-sp-input" placeholder="例：低电量提醒推送，4节5号电池续航12个月" />
+            </div>
+            <div class="s3-sp-row">
+              <div class="s3-sp-num">5</div>
+              <input type="text" class="s3-sp-input" placeholder="（可选）继续添加卖点..." />
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="addSpBtn">＋ 添加卖点</button>
+        </div>
+
+        <!-- 模块 D：参考竞品 ASIN（新增） -->
+        <div class="s3-block s3-block-rival">
+          <div class="s3-block-title">🔍 D · 参考竞品 ASIN <span class="s3-block-hint">填写 3~5 个，AI 将分析其写作风格作为创作参考</span></div>
+          <div class="rival-tip">
+            <span>填写后，系统将自动拉取这些竞品的标题与五点描述，供 AI 在生成<strong>标题、五点文案、主图图需、A+ 套图</strong>时参考借鉴竞品优秀写法、取长补短、突出差异化。</span>
+          </div>
+          <div id="rivalAsinContainer">
+            <div class="rival-row">
+              <span class="rival-num">1</span>
+              <input type="text" class="rival-asin-input" placeholder="ASIN（10位）或亚马逊商品链接" />
+              <span class="rival-status" title="状态"></span>
+            </div>
+            <div class="rival-row">
+              <span class="rival-num">2</span>
+              <input type="text" class="rival-asin-input" placeholder="ASIN（10位）或亚马逊商品链接" />
+              <span class="rival-status" title="状态"></span>
+            </div>
+            <div class="rival-row">
+              <span class="rival-num">3</span>
+              <input type="text" class="rival-asin-input" placeholder="ASIN（10位）或亚马逊商品链接" />
+              <span class="rival-status" title="状态"></span>
+            </div>
+          </div>
+          <div class="rival-actions">
+            <button class="btn btn-outline btn-sm" id="addRivalBtn">＋ 添加一行</button>
+            <button class="btn btn-secondary btn-sm" id="fetchRivalsBtn">
+              <span id="fetchRivalsBtnIcon">⚡</span> <span id="fetchRivalsBtnText">批量拉取竞品 Listing</span>
+            </button>
+          </div>
+          <div id="rivalFetchedSummary" style="display:none"></div>
+        </div>
+
+        <!-- 模块 E：差异化优势 vs 竞品 -->
+        <div class="s3-block">
+          <div class="s3-block-title">🆚 E · 对比竞品的差异化优势</div>
+          <textarea id="s3Diff" rows="3" placeholder="描述我们比竞品强在哪里。例：竞品不支持 Google Home，我们支持；竞品没有自动反锁，我们有；我们有中文客服和说明书，竞品没有。"></textarea>
+        </div>
+
+        <!-- 模块 F：其他补充 -->
+        <div class="s3-block">
+          <div class="s3-block-title">📝 F · 补充说明 <span class="optional">（可选）</span></div>
+          <textarea id="s3Extra" rows="2" placeholder="证书认证、包装亮点、售后服务、品牌故事等额外信息..."></textarea>
+        </div>
+
+        <!-- 侧重方向 -->
+        <div class="form-group">
+          <label>输出侧重方向</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" value="price" id="focusPrice" /> 价格竞争力
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" value="quality" id="focusQuality" checked /> 品质升级
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" value="feature" id="focusFeature" checked /> 功能差异化
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" value="audience" id="focusAudience" /> 精准人群定向
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" value="rufus" id="focusRufus" checked /> Rufus/COSMO 优化
+            </label>
+          </div>
+        </div>
+
+        <!-- 模块 G：风格参考竞品（学习写作风格，生成对应备选版） -->
+        <div class="s3-block s3-block-styleref">
+          <div class="s3-block-title">✍️ G · 风格参考竞品 <span class="s3-block-hint">填写 1~2 个，AI 将模仿其写作风格生成备选版</span></div>
+          <div class="styleref-tip">
+            <span>输入后，AI 将深度学习该竞品的<strong>标题结构、句式风格、五点写法</strong>，额外生成一套「风格参考版」备选标题、五点文案和主图图需，在 Step 4 中独立 Tab 展示，便于对比选用。</span>
+          </div>
+          <div id="styleRefAsinContainer">
+            <div class="styleref-row">
+              <span class="styleref-num">1</span>
+              <input type="text" class="styleref-asin-input" placeholder="ASIN（10位）或亚马逊商品链接" />
+              <span class="styleref-status" title="状态"></span>
+            </div>
+            <div class="styleref-row">
+              <span class="styleref-num">2</span>
+              <input type="text" class="styleref-asin-input" placeholder="ASIN（10位）或亚马逊商品链接（可选）" />
+              <span class="styleref-status" title="状态"></span>
+            </div>
+          </div>
+          <div class="styleref-actions">
+            <button class="btn btn-fetch btn-sm" id="fetchStyleRefBtn">
+              <span id="fetchStyleRefBtnIcon">⚡</span> <span id="fetchStyleRefBtnText">拉取风格参考 Listing</span>
+            </button>
+          </div>
+          <div id="styleRefFetchedSummary" style="display:none"></div>
+        </div>
+
+        <button class="btn btn-primary btn-large" id="generateBtn">
+          <span class="btn-icon">✨</span> 生成对比分析与文案建议
+        </button>
+      </section>
+
+      <!-- Step 4: Output Suggestions -->
+      <section class="card step-panel" id="step4">
+        <div class="card-header-row">
+          <h2 class="card-title">
+            <span class="step-badge">Step 4</span>
+            对比分析与完整文案建议
+          </h2>
+          <div class="card-actions">
+            <button class="btn btn-outline btn-sm" id="copyFinal">📋 复制全部</button>
+            <button class="btn btn-outline btn-sm" id="regenerate">🔄 重新生成</button>
+          </div>
+        </div>
+
+        <div id="finalLoading" class="loading-block" style="display:none">
+          <div class="spinner"></div>
+          <div class="loading-text">
+            <p id="finalLoadingStatus">正在生成文案建议...</p>
+            <p class="loading-sub">AI 正在结合竞品分析与您的产品卖点，生成专业运营方案</p>
+          </div>
+        </div>
+
+        <div id="finalOutput" style="display:none">
+          <!-- Tab Nav -->
+          <div class="tab-nav">
+            <button class="tab-btn active" data-tab="positioning">🎯 差异化定位</button>
+            <button class="tab-btn" data-tab="titles">📝 备选标题</button>
+            <button class="tab-btn" data-tab="bullets">📋 五点文案</button>
+            <button class="tab-btn" data-tab="visual">🖼️ 主图图需</button>
+            <button class="tab-btn" data-tab="aplus">✨ A+套图创作思路</button>
+            <button class="tab-btn tab-btn-styleref" data-tab="styleref" id="styleRefTab" style="display:none">✍️ 风格参考版</button>
+          </div>
+
+          <div class="tab-content active" id="tab-positioning">
+            <div id="positioningContent"></div>
+          </div>
+          <div class="tab-content" id="tab-titles">
+            <div id="titlesContent"></div>
+          </div>
+          <div class="tab-content" id="tab-bullets">
+            <div id="bulletsContent"></div>
+          </div>
+          <div class="tab-content" id="tab-visual">
+            <div id="visualContent"></div>
+          </div>
+          <div class="tab-content" id="tab-aplus">
+            <div id="aplusContent"></div>
+          </div>
+          <div class="tab-content" id="tab-styleref">
+            <div id="styleRefContent"></div>
+          </div>
+        </div>
+
+        <div class="card-footer" id="step4Footer" style="display:none">
+          <button class="btn btn-outline btn-large" id="restartBtn">
+            🔁 分析新产品
+          </button>
+
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
