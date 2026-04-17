@@ -2070,12 +2070,35 @@ function initTabs() {
 function copyTextContent(elId) {
   const el = document.getElementById(elId);
   if (!el) return;
-  const text = el.innerText || el.textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('已复制到剪贴板', 'success');
-  }).catch(() => {
-    showToast('复制失败，请手动选择', 'error');
-  });
+  const text = el.innerText || el.textContent || '';
+  // 优先用现代 Clipboard API（HTTPS 环境）
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('已复制到剪贴板', 'success');
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) {
+      showToast('已复制到剪贴板', 'success');
+    } else {
+      showToast('复制失败，请手动 Ctrl+A 全选后复制', 'error');
+    }
+  } catch (e) {
+    showToast('复制失败，请手动 Ctrl+A 全选后复制', 'error');
+  }
 }
 
 // ===== Main Analyze Flow =====
