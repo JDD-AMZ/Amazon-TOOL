@@ -2487,45 +2487,29 @@ textarea { resize: vertical; min-height: 100px; }
 
 /* ===== 打印样式 ===== */
 @media print {
-  /* 隐藏与报告无关的 UI */
-  .steps-nav,
+  /* 强制显示当前激活的 step 面板（默认 display:none 的要打印出来） */
+  .step-panel.active { display: block !important; }
+
+  /* 隐藏纯交互元素 */
   .card-actions,
-  .card-footer,
-  #step1,
-  #step3,
   .toast-container,
-  .settings-panel,
-  .sidebar,
-  nav,
-  header {
+  .steps-nav {
     display: none !important;
   }
 
-  /* 确保 Step 2 铺满整页 */
-  body, .app-wrapper, .main-content {
-    background: #fff !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  #step2 {
-    display: block !important;
+  /* 去除背景色和阴影 */
+  body { background: #fff !important; }
+  .card {
     box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
+    border: 1px solid #e2e8f0 !important;
   }
 
-  /* 展开折叠的 details 元素 */
+  /* 展开所有 details，确保内容完整打印 */
   details { display: block !important; }
-  details summary { display: none; }
+  details > summary { display: none; }
 
-  /* 避免表格行跨页断行 */
+  /* 避免表格行和区块跨页断行 */
   table { page-break-inside: auto; }
   tr { page-break-inside: avoid; }
-
-  /* 避免区块标题和内容分页 */
   .av-section { page-break-inside: avoid; }
-
-  /* 链接显示纯文本 */
-  a::after { content: none !important; }
 }
