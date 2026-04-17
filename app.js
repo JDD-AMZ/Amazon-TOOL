@@ -294,6 +294,34 @@ async function fetchViaSorftime(asin, sk) {
 // --- Sorftime 评论接口 ---
 let fetchedReviewsData = null; // 原始评论数组
 
+// --- Sorftime 子体销量历史接口 ---
+async function fetchSalesHistoryViaSorftime(asin, sk) {
+  const useProxy = location.port === '3001';
+  const url = useProxy
+    ? `http://localhost:3001/proxy/sorftime/ProductSalesQuery?domain=1`
+    : `https://standardapi.sorftime.com/api/ProductSalesQuery?domain=1`;
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secretKey: sk, asin }),
+  });
+  if (!resp.ok) throw new Error(`Sorftime 销量接口请求失败 (${resp.status})`);
+  const data = await resp.json();
+  if (data.Code !== 0) {
+    if (data.Code === 4) throw new Error('Sorftime 积分余额不足');
+    if (data.Code === 1) throw new Error('Sorftime 认证失败，请检查 API Key');
+    if (data.Code === 3) throw new Error('该 ASIN 暂无销量数据');
+    throw new Error(data.Message || `Sorftime 销量接口异常 (Code: ${data.Code})`);
+  }
+  // Data 格式: [ [日期, 销量值, 子体数], ... ]
+  return (data.Data || []).map(row => ({
+    date: row[0],
+    sales: parseInt(row[1], 10) || 0,
+    variants: parseInt(row[2], 10) || 0,
+  }));
+}
+
 // ===== 参考竞品 ASIN 批量拉取 =====
 // 通过 Sorftime 或 AI 回退，逐个拉取 title + bullets，存入 state.rivalListings
 async function fetchRivalListings() {
@@ -1603,6 +1631,121 @@ function renderReviewAIResult(result) {
 }
 
 
+function renderSalesHistory(rows) {
+  const el = document.getElementById('salesHistoryContent');
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = `<p style="color:var(--text-muted);padding:12px 0;font-size:13px;">暂无子体销量数据</p>`;
+    return;
+  }
+
+  // 按日期升序，同一天保留最大值
+  const dayMap = {};
+  rows.forEach(r => {
+    if (!dayMap[r.date] || r.sales > dayMap[r.date]) dayMap[r.date] = r.sales;
+  });
+  const sorted = Object.keys(dayMap).sort().map(d => ({ date: d, sales: dayMap[d] }));
+  const maxSales = Math.max(...sorted.map(r => r.sales));
+  const minSales = Math.min(...sorted.map(r => r.sales));
+  const latest = sorted[sorted.length - 1];
+  const oldest = sorted[0];
+
+  // ── SVG 折线图 ──
+  const W = 680, H = 160, PL = 60, PR = 16, PT = 16, PB = 36;
+  const gW = W - PL - PR, gH = H - PT - PB;
+  const n = sorted.length;
+  const xStep = n > 1 ? gW / (n - 1) : gW;
+
+  function xPos(i) { return PL + (n > 1 ? i * gW / (n - 1) : gW / 2); }
+  function yPos(v) {
+    if (maxSales === minSales) return PT + gH / 2;
+    return PT + gH - (v - minSales) / (maxSales - minSales) * gH;
+  }
+
+  // 折线路径
+  const points = sorted.map((r, i) => `${xPos(i).toFixed(1)},${yPos(r.sales).toFixed(1)}`).join(' ');
+  const polyline = `<polyline points="${points}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+  // 面积填充
+  const firstX = xPos(0).toFixed(1), lastX = xPos(n - 1).toFixed(1);
+  const baseY = (PT + gH).toFixed(1);
+  const areaPath = `M${firstX},${baseY} L${points.split(' ').map(p => p).join(' L')} L${lastX},${baseY} Z`;
+  const area = `<path d="${areaPath}" fill="url(#salesGrad)" opacity="0.18"/>`;
+
+  // Y轴刻度（3条）
+  const yTicks = [0, 0.5, 1].map(t => {
+    const v = Math.round(minSales + t * (maxSales - minSales));
+    const y = yPos(v).toFixed(1);
+    return `<line x1="${PL}" y1="${y}" x2="${W - PR}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>
+            <text x="${PL - 6}" y="${parseFloat(y) + 4}" text-anchor="end" font-size="10" fill="#94a3b8">${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}</text>`;
+  }).join('');
+
+  // X轴日期标签（最多显示6个）
+  const step = Math.max(1, Math.floor(n / 6));
+  const xLabels = sorted.map((r, i) => {
+    if (i % step !== 0 && i !== n - 1) return '';
+    const x = xPos(i).toFixed(1);
+    const label = r.date.slice(5); // MM-DD
+    return `<text x="${x}" y="${H - 4}" text-anchor="middle" font-size="10" fill="#94a3b8">${label}</text>`;
+  }).join('');
+
+  // 数据点（最多20个，避免太密）
+  const dotStep = Math.max(1, Math.floor(n / 20));
+  const dots = sorted.map((r, i) => {
+    if (i % dotStep !== 0 && i !== n - 1 && i !== 0) return '';
+    return `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(r.sales).toFixed(1)}" r="3" fill="#3b82f6" stroke="#fff" stroke-width="1.5"/>`;
+  }).join('');
+
+  const svg = `
+  <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3b82f6"/>
+        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${yTicks}
+    ${area}
+    ${polyline}
+    ${dots}
+    ${xLabels}
+  </svg>`;
+
+  // ── 汇总统计 ──
+  const avgSales = Math.round(sorted.reduce((s, r) => s + r.sales, 0) / sorted.length);
+  const statsHtml = `
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+    <div class="sales-stat-card"><div class="sales-stat-val">${latest.sales.toLocaleString()}</div><div class="sales-stat-label">最新销量（${latest.date}）</div></div>
+    <div class="sales-stat-card"><div class="sales-stat-val">${maxSales.toLocaleString()}</div><div class="sales-stat-label">历史峰值</div></div>
+    <div class="sales-stat-card"><div class="sales-stat-val">${avgSales.toLocaleString()}</div><div class="sales-stat-label">区间均值</div></div>
+    <div class="sales-stat-card"><div class="sales-stat-val">${sorted.length}</div><div class="sales-stat-label">数据天数</div></div>
+  </div>`;
+
+  // ── 明细表格（最近30条） ──
+  const tableRows = [...sorted].reverse().slice(0, 30).map(r => `
+    <tr>
+      <td>${r.date}</td>
+      <td style="font-weight:600;color:#1d4ed8">${r.sales.toLocaleString()}</td>
+      <td style="color:var(--text-muted)">${r.variants}</td>
+    </tr>`).join('');
+  const tableHtml = `
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#374151;padding:6px 0;user-select:none;">📋 查看明细数据（最近30天）</summary>
+    <table class="analysis-table" style="margin-top:8px;">
+      <thead><tr><th>日期</th><th>销量</th><th>子体数</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </details>`;
+
+  el.innerHTML = `
+  <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">数据来源：Sorftime · 官方公布子体月销量 · 共 ${sorted.length} 条记录（${oldest.date} ~ ${latest.date}）</div>
+  ${statsHtml}
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 8px 4px;">
+    ${svg}
+  </div>
+  ${tableHtml}`;
+}
+
 function renderAnalysis(data) {
   // 更新卡片标题为当前竞品产品名
   const cardTitleEl = document.querySelector('#step2 .card-title');
@@ -2160,8 +2303,23 @@ async function runAnalysis() {
 
     renderAnalysis(parsed);
 
-  // 如果有 Sorftime 评价数据，直接渲染评价 tab
-  if (fetchedListingData && fetchedListingData.source === 'sorftime') {
+    // 如果有 Sorftime Key，异步拉取子体销量历史
+    const _s = getSettings();
+    if (_s.sorfTimeKey) {
+      fetchSalesHistoryViaSorftime(asin, _s.sorfTimeKey)
+        .then(salesData => {
+          state.salesHistory = salesData;
+          renderSalesHistory(salesData);
+        })
+        .catch(() => {
+          // 销量数据拉取失败不影响主流程，静默忽略
+          const el = document.getElementById('salesHistoryContent');
+          if (el) el.innerHTML = `<p style="color:var(--text-muted);padding:12px 0;font-size:13px;">⚠️ 暂无子体销量数据（ASIN 未收录或积分不足）</p>`;
+        });
+    }
+
+    // 如果有 Sorftime 评价数据，直接渲染评价 tab
+    if (fetchedListingData && fetchedListingData.source === 'sorftime') {
     renderReviews(fetchedListingData);
   } else {
     const rc = document.getElementById('reviewsContent');
@@ -2547,7 +2705,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Step 2 actions
   document.getElementById('goStep3Btn').addEventListener('click', () => goToStep(3));
   document.getElementById('copyAnalysis').addEventListener('click', () => {
-    copyTextContent('analysisOutput');
+    window.print();
   });
   document.getElementById('reanalyze').addEventListener('click', () => {
     const titleEl = document.querySelector('#step2 .card-title');
